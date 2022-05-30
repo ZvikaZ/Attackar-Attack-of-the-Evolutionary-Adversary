@@ -22,13 +22,13 @@ if __name__ == '__main__':
                         help="Run only specific dataset")
     parser.add_argument("--eps", "-ep", type=float, default=0.1,
                         help="Constrained optimization problem - epsilon")
-    parser.add_argument("--pop", "-pop", type=int, default=20,
+    parser.add_argument("--pop", "-pop", type=int, default=70,
                         help="Population size")
-    parser.add_argument("--gen", "-g", type=int, default=1000,
+    parser.add_argument("--gen", "-g", type=int, default=600,
                         help="Number of generations")
-    parser.add_argument("--images", "-i", type=int, default=3,
+    parser.add_argument("--images", "-i", type=int, default=201,
                         help="Maximal number of images from dataset to process")
-    parser.add_argument("--tournament", "-t", type=int, default=35,
+    parser.add_argument("--tournament", "-t", type=int, default=25,
                         help="Tournament selection")
     parser.add_argument("--path", "-ip", default='/cs_storage/public_datasets/ImageNet',
                         help="ImageNet dataset path")

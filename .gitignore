@@ -3,6 +3,6 @@ __pycache__/
 data/cifar-10-batches-py
 data/MNIST
 data/cifar-10-python.tar.gz
-models/state_dicts/inception_v3.pt
+models/state_dicts/*.pt
 pycharm_session_*.log
 slurm-*.out

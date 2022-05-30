@@ -24,6 +24,7 @@ efficiency.
 
 ## Prerequisites
     conda create -n attackar python=3.8.12
+    conda activate attackar
     pip install -r requirements.txt
 
 ## Download the trained models weights
