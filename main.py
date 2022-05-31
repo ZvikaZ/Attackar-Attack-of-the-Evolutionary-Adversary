@@ -59,12 +59,13 @@ if __name__ == '__main__':
             break
 
         if correctly_classified(dataset, init_model, x, y) and count < n_images:
-            print_initialize(dataset, init_model, x, y)
             count += 1
+            print_initialize(dataset, init_model, x, y, count, n_images)
             images_indices.append(i)
-            adv, n_queries = EvoAttack(dataset=dataset, model=init_model, x=x, y=y, eps=eps, n_gen=n_gen, pop_size=pop_size,tournament=tournament).generate()
+            adv, n_queries = EvoAttack(dataset=dataset, model=init_model, x=x, y=y, eps=eps, n_gen=n_gen,
+                                       pop_size=pop_size, tournament=tournament).generate()
 
-            if not isinstance(adv, type(None)):
+            if adv is not None:
                 success_count += 1
                 adv = adv.cpu().numpy()
                 if success_count == 1:
@@ -76,7 +77,7 @@ if __name__ == '__main__':
                 print('Evolution failed!')
             evo_queries.append(n_queries)
 
-
+    print()
     print('########################################')
     print(f'Summary:')
     print(f'\tDataset: {dataset}')
@@ -84,7 +85,7 @@ if __name__ == '__main__':
     print(f'\tTournament: {tournament}')
     print(f'\tMetric: linf, epsilon: {eps:.4f}')
     print(f'\tEvo:')
-    print(f'\t\tEvo - test accuracy: {(1 - (success_count / n_images)) * 100:.4f}%')
+    print(f'\t\tEvo - attack success rate: {(success_count / n_images) * 100:.4f}%')
     print(f'\t\tEvo - queries: {evo_queries}')
     print(f'\t\tEvo - queries (median): {int(np.median(evo_queries))}')
     print('########################################')

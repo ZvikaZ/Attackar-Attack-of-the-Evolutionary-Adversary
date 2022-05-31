@@ -9,6 +9,7 @@ from utils import normalize
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
+
 class EvoAttack():
     def __init__(self, dataset, model, x, y, n_gen=500, pop_size=40, eps=0.3, tournament=35, defense=False):
         self.dataset = dataset
@@ -58,14 +59,13 @@ class EvoAttack():
         parent2 = parent2[0].flatten()
         i = np.random.randint(0, len(parent1))
         j = np.random.randint(i, len(parent1))
-        offspring1 = torch.cat([parent1[:i], parent2[i:j], parent1[j:]], dim = 0)
-        offspring2 = torch.cat([parent2[:i], parent1[i:j], parent2[j:]], dim = 0)
+        offspring1 = torch.cat([parent1[:i], parent2[i:j], parent1[j:]], dim=0)
+        offspring2 = torch.cat([parent2[:i], parent1[i:j], parent2[j:]], dim=0)
         offspring1 = offspring1.reshape(self.x.shape)
         offspring2 = offspring2.reshape(self.x.shape)
         offspring1 = self.project(offspring1)
         offspring2 = self.project(offspring2)
         return offspring1, offspring2
-
 
     def elitism(self, cur_pop):
         elite = min(cur_pop, key=itemgetter(1))[0]
@@ -88,7 +88,8 @@ class EvoAttack():
         center_w = np.random.randint(0, w - s)
         x_curr_window = x_hat[0][:, :, center_h:center_h + s, center_w:center_w + s]
         for i in range(c):
-            x_curr_window[:, i] += np.random.choice([-2 * self.eps, 2 * self.eps]) * torch.ones(x_curr_window[:, i].shape).to(device)
+            x_curr_window[:, i] += np.random.choice([-2 * self.eps, 2 * self.eps]) * torch.ones(
+                x_curr_window[:, i].shape).to(device)
 
         x_hat[0][:, :, center_h:center_h + s, center_w: center_w + s] = x_curr_window
         x_hat = self.project(x_hat[0])
@@ -103,7 +104,7 @@ class EvoAttack():
                 def_x_hat = self.defense(def_x_hat.cpu().numpy())[0]
                 def_x_hat = torch.tensor(def_x_hat).to(device)
             n_x_hat = normalize(self.dataset, def_x_hat)
-            probs = F.softmax(self.model(n_x_hat), dim = 1).squeeze()
+            probs = F.softmax(self.model(n_x_hat), dim=1).squeeze()
             objective = probs[self.y] - max(x for i, x, in enumerate(probs) if not i == self.y)
             cur_pop[i] = [x_hat, objective + x_hat_l2]
 
@@ -113,10 +114,9 @@ class EvoAttack():
             def_x_hat = self.defense(def_x_hat.cpu().numpy())[0]
             def_x_hat = torch.tensor(def_x_hat).to(device)
         n_x_hat = normalize(self.dataset, def_x_hat)
-        return torch.argmax(F.softmax(self.model(n_x_hat), dim = 1))
+        return torch.argmax(F.softmax(self.model(n_x_hat), dim=1))
 
     def termination_condition(self, cur_pop, gen):
-
         if gen == self.n_gen:
             return True
         for [x_hat, _] in cur_pop:

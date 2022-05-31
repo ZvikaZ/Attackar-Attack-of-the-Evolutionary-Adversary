@@ -16,7 +16,9 @@ from models.vgg import vgg16_bn
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print(f"Running on {device}")
 
-def compute_accuracy(dataset, init_model, x_test, y_test, min_pixel_value, max_pixel_value, to_tensor=False, to_normalize=False):
+
+def compute_accuracy(dataset, init_model, x_test, y_test, min_pixel_value, max_pixel_value, to_tensor=False,
+                     to_normalize=False):
     classifier = PyTorchClassifier(
         model=init_model,
         clip_values=(min_pixel_value, max_pixel_value),
@@ -33,27 +35,31 @@ def compute_accuracy(dataset, init_model, x_test, y_test, min_pixel_value, max_p
     print("Accuracy: {}%".format(accuracy * 100))
     return accuracy
 
+
 def correctly_classified(dataset, model, x, y):
     softmax = nn.Softmax(dim=1)
     x = normalize(dataset, x)
     return y == torch.argmax(softmax(model(x)))
 
+
 def get_model(model_name, dataset, path):
     if model_name == 'custom':
         model = torch.load(Path(path) / f'{dataset}_model.pth', map_location=torch.device(device)).eval()
-    elif dataset=='cifar10':
+    elif dataset == 'cifar10':
         if model_name == 'gowal':
-            model = load_model(model_name='Gowal2020Uncovering_70_16', dataset='cifar10', threat_model='Linf').to(device)
+            model = load_model(model_name='Gowal2020Uncovering_70_16', dataset='cifar10', threat_model='Linf').to(
+                device)
         elif model_name == 'rebuffi':
-            model = load_model(model_name='Rebuffi2021Fixing_70_16_cutmix_extra', dataset='cifar10', threat_mode='Linf').to(device)
+            model = load_model(model_name='Rebuffi2021Fixing_70_16_cutmix_extra', dataset='cifar10',
+                               threat_mode='Linf').to(device)
         else:
             model = globals()[model_name](pretrained=True).to(device).eval()
-    elif dataset=='imagenet':
+    elif dataset == 'imagenet':
         if model_name == 'vgg16_bn':
             model = torchvision.models.vgg16_bn(pretrained=True).to(device).eval()
         elif model_name == 'resnet50':
             model = torchvision.models.resnet50(pretrained=True).to(device).eval()
-        elif model_name =='inception_v3':
+        elif model_name == 'inception_v3':
             model = torchvision.models.inception_v3(pretrained=True).to(device).eval()
         elif model_name == 'salman':
             model = load_model(model_name='Salman2020Do_50_2', dataset='imagenet', threat_model='Linf').to(device)
@@ -61,14 +67,16 @@ def get_model(model_name, dataset, path):
         raise Exception('No such dataset!')
     return model
 
+
 def normalize(dataset, images):
     if dataset == 'cifar10':
         norm_images = transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2471, 0.2435, 0.2616))(images)
     elif dataset == 'mnist':
-        norm_images = transforms.Normalize( (0.5,), (0.5,))(images)
+        norm_images = transforms.Normalize((0.5,), (0.5,))(images)
     elif dataset == 'imagenet':
-        norm_images = transforms.Normalize((0.485, 0.456, 0.406),(0.229, 0.224, 0.225))(images)
+        norm_images = transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))(images)
     return norm_images
+
 
 def get_normalization(dataset):
     if dataset == 'cifar10':
@@ -79,14 +87,15 @@ def get_normalization(dataset):
         values = ((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
     return values
 
+
 def inv_normalize(dataset):
     if dataset == 'cifar10':
         return transforms.Normalize(
-                mean=[-0.4914 / 0.2471, -0.4822 / 0.2435, -0.4465 / 0.2616],
-                std=[1 / 0.2471, 1 / 0.2435, 1 / 0.2616]
-            )
+            mean=[-0.4914 / 0.2471, -0.4822 / 0.2435, -0.4465 / 0.2616],
+            std=[1 / 0.2471, 1 / 0.2435, 1 / 0.2616]
+        )
     elif dataset == 'mnist':
-        return transforms.Normalize(mean = [-0.5 / 0.5], std=[1 / 0.5])
+        return transforms.Normalize(mean=[-0.5 / 0.5], std=[1 / 0.5])
 
     elif dataset == 'imagenet':
         return transforms.Normalize(
@@ -95,6 +104,7 @@ def inv_normalize(dataset):
         )
     else:
         return 'WTF'
+
 
 def inv_normalize_and_save(img, best_individual, not_best_individual):
     orig = img
@@ -105,22 +115,23 @@ def inv_normalize_and_save(img, best_individual, not_best_individual):
         save_image(bad_attack, 'bad.png')
         save_image(orig, 'orig.png')
 
-def print_initialize(dataset, model, img, label):
+
+def print_initialize(dataset, model, img, label, count, n_images):
     normalized_img = normalize(dataset, img)
     print("################################")
+    print(f'Image {count} of {n_images}')
     print(f'Correct class: {label}')
     print(f'Initial class prediction: {model(normalized_img).argmax(dim=1).item()}')
     print(f'Initial probability: {F.softmax(model(normalized_img), dim=1).max():.4f}')
-    print("################################")
+
 
 def print_success(dataset, model, n_queries, label, best_individual):
     best_individual = torch.tensor(best_individual).to(device)
     normalized_best_inv = normalize(dataset, best_individual)
-    print("################################")
+    print("-------------------------------")
     print(f'Evolution succeeded!')
     print(f'Correct class: {label}')
     print(f'Current prediction: {model(normalized_best_inv).argmax(dim=1).item()}')
     print(
-        f'Current probability (orig class): {F.softmax(model(normalized_best_inv), dim = 1)[0][label].item():.4f}')
+        f'Current probability (orig class): {F.softmax(model(normalized_best_inv), dim=1)[0][label].item():.4f}')
     print(f'Number of queries: {n_queries}')
-    print("################################")
