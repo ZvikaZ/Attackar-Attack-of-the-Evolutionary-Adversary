@@ -16,6 +16,7 @@ datasets_names = ['mnist', 'imagenet', 'cifar10']
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description="Runs Evolutionary Adversarial Attacks on various Deep Learning models")
+    parser.add_argument("--norm", "-n", choices=['l2','linf'], default='l2', help="Use l_2 or l_inf norm")
     parser.add_argument("--model", "-m", choices=models_names, default='custom',
                         help="Run only specific model")
     parser.add_argument("--dataset", "-da", choices=datasets_names, default='cifar10',
@@ -37,6 +38,7 @@ if __name__ == '__main__':
     n_images = args.images
     dataset = args.dataset
     model = args.model
+    norm = args.norm
     tournament = args.tournament
     eps = args.eps
     pop_size = args.pop
@@ -63,7 +65,7 @@ if __name__ == '__main__':
             print_initialize(dataset, init_model, x, y, count, n_images)
             images_indices.append(i)
             adv, n_queries = EvoAttack(dataset=dataset, model=init_model, x=x, y=y, eps=eps, n_gen=n_gen,
-                                       pop_size=pop_size, tournament=tournament).generate()
+                                       pop_size=pop_size, tournament=tournament, norm=norm).generate()
 
             if adv is not None:
                 success_count += 1
@@ -82,6 +84,7 @@ if __name__ == '__main__':
     print(f'Summary:')
     print(f'\tDataset: {dataset}')
     print(f'\tModel: {model}')
+    print(f'\tNorm: {norm}')
     print(f'\tTournament: {tournament}')
     print(f'\tMetric: linf, epsilon: {eps:.4f}')
     print(f'\tEvo:')

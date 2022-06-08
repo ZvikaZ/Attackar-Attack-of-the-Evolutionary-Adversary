@@ -10,8 +10,13 @@ from utils import normalize
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
+def elitism(cur_pop):
+    elite = min(cur_pop, key=itemgetter(1))[0]
+    return elite
+
+
 class EvoAttack():
-    def __init__(self, dataset, model, x, y, n_gen=500, pop_size=40, eps=0.3, tournament=35, defense=False):
+    def __init__(self, dataset, model, x, y, n_gen=500, pop_size=40, eps=0.3, tournament=35, defense=False, norm='l2'):
         self.dataset = dataset
         self.model = model
         self.x = x
@@ -26,14 +31,15 @@ class EvoAttack():
         self.defense = defense
         self.min_ball = torch.tile(torch.maximum(self.x - eps, torch.tensor(0)), (1, 1))
         self.max_ball = torch.tile(torch.minimum(self.x + eps, torch.tensor(1)), (1, 1))
+        self.norm = norm
 
     def generate(self):
         gen = 0
-        cur_pop = self.init()
+        cur_pop = self.pop_init()
         while not self.termination_condition(cur_pop, gen):
             self.fitness(cur_pop)
             new_pop = []
-            elite = self.elitism(cur_pop)
+            elite = elitism(cur_pop)
 
             new_pop.append([elite, np.inf])
             for i in range((self.pop_size - 1) // 3):
@@ -66,10 +72,6 @@ class EvoAttack():
         offspring1 = self.project(offspring1)
         offspring2 = self.project(offspring2)
         return offspring1, offspring2
-
-    def elitism(self, cur_pop):
-        elite = min(cur_pop, key=itemgetter(1))[0]
-        return elite
 
     def selection(self, cur_pop):
         selection = [random.choice(cur_pop) for i in range(self.n_tournament)]
@@ -131,14 +133,42 @@ class EvoAttack():
         projected_x_hat = torch.clip(x_hat, self.min_ball, self.max_ball)
         return projected_x_hat
 
-    def init(self):
+    def pop_init(self):
+        if self.norm == 'l2':
+            init_func = self.l2_init
+        elif self.norm == 'linf':
+            init_func = self.vertical_mutation
+        else:
+            raise ValueError(f'Unrecognized norm: {self.norm}')
+
         cur_pop = []
         for i in range(self.pop_size):
             x_hat = self.x.clone()
-            x_hat = self.vertical_mutation(x_hat)
-
+            x_hat = init_func(x_hat)
             cur_pop.append([x_hat, np.inf])
         return cur_pop
+
+    def l2_init(self, x_hat):
+        # TODO? grid 5*5 tiling, and run perturbation on each tile
+        win_size = self.p_selection(self.p_init, self.queries, self.n_gen * self.pop_size)
+        perturb = self.sample_l2(self.eps, win_size, x_hat.shape[-1], x_hat.shape[1], x_hat)
+        # resulting (x_hat - x) rescaled to have l2 norm of epsilon
+        # resulting x_hat is projected to [0,1] by clipping
+
+    def sample_l2(self, eps, win_size, im_size, c, x_hat):
+        v = x_hat - self.x
+        r1 = torch.randint(0, im_size - win_size)
+        s1 = torch.randint(0, im_size - win_size)
+        r2 = torch.randint(0, im_size - win_size)
+        s2 = torch.randint(0, im_size - win_size)
+        # W1 , W2   #TODO
+        eps_unused_sqr = eps ^ 2 - torch.linalg.matrix_norm(v, ord=2) ^ 2
+        eta = self.sample_eta() #TODO
+        eta_star = eta / torch.linalg.matrix_norm(eta, ord=2)
+        for i in range(len(c)):
+            rho = np.random.choice([-1, 1])
+            v_temp = rho * eta_star # + v[W1,i] / torch.linalg.matrix_norm(v[W1,i], ord=2)   #TODO
+
 
     def vertical_mutation(self, x_hat):
         size = np.asarray(self.x.shape)
