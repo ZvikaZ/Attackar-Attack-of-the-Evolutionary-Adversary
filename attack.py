@@ -156,19 +156,46 @@ class EvoAttack():
         # resulting x_hat is projected to [0,1] by clipping
 
     def sample_l2(self, eps, win_size, im_size, c, x_hat):
+        def norm_l2(M):
+            return torch.linalg.matrix_norm(M, ord=2)
+
+        def sample_eta(h):
+            def M(r, s, n, h1, h2):
+                return n - max(torch.abs(r - torch.floor(h1 / 2) - 1),
+                               torch.abs(s - torch.floor(h2 / 2) - 1))
+
+            def eta_h1_h2(h1, h2):
+                n = torch.floor(h1 / 2)
+                result = torch.zeros(h1, h2)
+                # TODO: replace the 'for' with more efficient construct?
+                for r in range(h1):
+                    for s in range(h2):
+                        for k in range(M(r, s, n, h1, h2)):
+                            result[r, s] += 1 / ((n + 1 - k) ^ 2)
+                return result
+
+            k = torch.floor(h / 2)
+            eta = np.random.choice(eta_h1_h2(h, k), -eta_h1_h2(h, h - k))
+            return np.random.choice(eta, eta.T)
+
         v = x_hat - self.x
         r1 = torch.randint(0, im_size - win_size)
         s1 = torch.randint(0, im_size - win_size)
         r2 = torch.randint(0, im_size - win_size)
         s2 = torch.randint(0, im_size - win_size)
-        # W1 , W2   #TODO
-        eps_unused_sqr = eps ^ 2 - torch.linalg.matrix_norm(v, ord=2) ^ 2
-        eta = self.sample_eta() #TODO
-        eta_star = eta / torch.linalg.matrix_norm(eta, ord=2)
+        W1 = (r1, r1 + win_size - 1, s1, s1 + win_size - 1)
+        W2 = (r2, r2 + win_size - 1, s2, s2 + win_size - 1)
+        eps_unused_sqr = eps ^ 2 - norm_l2(v) ^ 2
+        eta = sample_eta(win_size)
+        eta_star = eta / norm_l2(eta)
         for i in range(len(c)):
             rho = np.random.choice([-1, 1])
-            v_temp = rho * eta_star # + v[W1,i] / torch.linalg.matrix_norm(v[W1,i], ord=2)   #TODO
-
+            v_temp = rho * eta_star + v[W1, i] / norm_l2(v[W1, i])  # TODO
+            # eps_evail = torch.sqrt(norm_l2(v[(W1 \cup W2), i]) ^ 2 + eps_unused_sqr / c)
+            eps_avail = 0   #TODO ^^
+            v[W2, i] = 0
+            v[W1, i] = v_temp / norm_l2(v_temp) * eps_evail
+        return self.x + v - x_hat
 
     def vertical_mutation(self, x_hat):
         size = np.asarray(self.x.shape)
