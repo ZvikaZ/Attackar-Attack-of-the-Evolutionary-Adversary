@@ -3,9 +3,9 @@ from operator import itemgetter
 import numpy as np
 import random
 import torch
-from copy import deepcopy
 
 from utils import normalize
+from l2_utils import meta_pseudo_gaussian_pert
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -16,7 +16,8 @@ def elitism(cur_pop):
 
 
 class EvoAttack():
-    def __init__(self, dataset, model, x, y, n_gen=500, pop_size=40, eps=0.3, tournament=35, defense=False, norm='l2'):
+    def __init__(self, dataset, model, x, y, n_gen=500, pop_size=40, eps=0.3, tournament=35, defense=False,
+                 norm='linf'):
         self.dataset = dataset
         self.model = model
         self.x = x
@@ -149,53 +150,25 @@ class EvoAttack():
         return cur_pop
 
     def l2_init(self, x_hat):
-        # TODO? grid 5*5 tiling, and run perturbation on each tile
-        win_size = self.p_selection(self.p_init, self.queries, self.n_gen * self.pop_size)
-        perturb = self.sample_l2(self.eps, win_size, x_hat.shape[-1], x_hat.shape[1], x_hat)
-        # resulting (x_hat - x) rescaled to have l2 norm of epsilon
-        # resulting x_hat is projected to [0,1] by clipping
+        c, h, w = x_hat.shape[1:]
+        assert x_hat.shape[0] == 1
 
-    def sample_l2(self, eps, win_size, im_size, c, x_hat):
-        def norm_l2(M):
-            return torch.linalg.matrix_norm(M, ord=2)
+        ### initialization
+        delta_init = torch.zeros(x_hat.shape).to(device)
+        s = h // 5  # s is initial square side for bumps
+        sp_init = (h - s * 5) // 2
+        center_h = sp_init + 0
+        for counter in range(h // s):
+            center_w = sp_init + 0
+            for counter2 in range(w // s):
+                delta_init[:, :, center_h:center_h + s, center_w:center_w + s] += \
+                    meta_pseudo_gaussian_pert(s).reshape([1, 1, s, s]) * \
+                    torch.from_numpy(np.random.choice([-1, 1], size=[x_hat.shape[0], c, 1, 1])).to(device)
+                center_w += s
+            center_h += s
 
-        def sample_eta(h):
-            def M(r, s, n, h1, h2):
-                return n - max(torch.abs(r - torch.floor(h1 / 2) - 1),
-                               torch.abs(s - torch.floor(h2 / 2) - 1))
-
-            def eta_h1_h2(h1, h2):
-                n = torch.floor(h1 / 2)
-                result = torch.zeros(h1, h2)
-                # TODO: replace the 'for' with more efficient construct?
-                for r in range(h1):
-                    for s in range(h2):
-                        for k in range(M(r, s, n, h1, h2)):
-                            result[r, s] += 1 / ((n + 1 - k) ^ 2)
-                return result
-
-            k = torch.floor(h / 2)
-            eta = np.random.choice(eta_h1_h2(h, k), -eta_h1_h2(h, h - k))
-            return np.random.choice(eta, eta.T)
-
-        v = x_hat - self.x
-        r1 = torch.randint(0, im_size - win_size)
-        s1 = torch.randint(0, im_size - win_size)
-        r2 = torch.randint(0, im_size - win_size)
-        s2 = torch.randint(0, im_size - win_size)
-        W1 = (r1, r1 + win_size - 1, s1, s1 + win_size - 1)
-        W2 = (r2, r2 + win_size - 1, s2, s2 + win_size - 1)
-        eps_unused_sqr = eps ^ 2 - norm_l2(v) ^ 2
-        eta = sample_eta(win_size)
-        eta_star = eta / norm_l2(eta)
-        for i in range(len(c)):
-            rho = np.random.choice([-1, 1])
-            v_temp = rho * eta_star + v[W1, i] / norm_l2(v[W1, i])  # TODO
-            # eps_evail = torch.sqrt(norm_l2(v[(W1 \cup W2), i]) ^ 2 + eps_unused_sqr / c)
-            eps_avail = 0   #TODO ^^
-            v[W2, i] = 0
-            v[W1, i] = v_temp / norm_l2(v_temp) * eps_evail
-        return self.x + v - x_hat
+        return torch.clip(
+            x_hat + delta_init / torch.sqrt(torch.sum(delta_init ** 2, axis=(1, 2, 3), keepdims=True)) * self.eps, 0, 1)
 
     def vertical_mutation(self, x_hat):
         size = np.asarray(self.x.shape)

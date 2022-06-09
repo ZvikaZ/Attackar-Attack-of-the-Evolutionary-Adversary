@@ -16,7 +16,7 @@ datasets_names = ['mnist', 'imagenet', 'cifar10']
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description="Runs Evolutionary Adversarial Attacks on various Deep Learning models")
-    parser.add_argument("--norm", "-n", choices=['l2','linf'], default='l2', help="Use l_2 or l_inf norm")
+    parser.add_argument("--norm", "-n", choices=['l2','linf'], default='linf', help="Use l_2 or l_inf norm")
     parser.add_argument("--model", "-m", choices=models_names, default='custom',
                         help="Run only specific model")
     parser.add_argument("--dataset", "-da", choices=datasets_names, default='cifar10',
