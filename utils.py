@@ -13,6 +13,8 @@ from models.inception import inception_v3
 from models.resnet import resnet50
 from models.vgg import vgg16_bn
 
+print("Checking for gpu...")
+
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print(f"Running on {device}")
 

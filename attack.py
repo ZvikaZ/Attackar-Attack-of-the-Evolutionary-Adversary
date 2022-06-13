@@ -43,18 +43,27 @@ class EvoAttack():
             elite = elitism(cur_pop)
 
             new_pop.append([elite, np.inf])
-            for i in range((self.pop_size - 1) // 3):
-                parent1 = self.selection(cur_pop)
-                parent2 = self.selection(cur_pop)
-                offspring1, offspring2 = self.crossover(parent1, parent2)
-                mut_offspring1 = self.mutation((offspring1, np.inf))
-                mut_offspring2 = self.mutation((offspring2, np.inf))
-                offspring1 = self.project(offspring1)
-                new_pop.append([offspring1, np.inf])
-                new_pop.append([mut_offspring1, np.inf])
-                new_pop.append([mut_offspring2, np.inf])
+            if self.norm == 'linf':
+                for i in range((self.pop_size - 1) // 3):
+                    parent1 = self.selection(cur_pop)
+                    parent2 = self.selection(cur_pop)
+                    offspring1, offspring2 = self.crossover(parent1, parent2)
+                    mut_offspring1 = self.mutation((offspring1, np.inf))
+                    mut_offspring2 = self.mutation((offspring2, np.inf))
+                    offspring1 = self.project(offspring1)
+                    new_pop.append([offspring1, np.inf])
+                    new_pop.append([mut_offspring1, np.inf])
+                    new_pop.append([mut_offspring2, np.inf])
+            elif self.norm == 'l2':
+                # for l2 we do only mutation, without crossover
+                for i in range(self.pop_size - 1):  # we already added 1 elitist
+                    ind, _ = self.selection(cur_pop)
+                    mut_ind = self.mutation((ind, np.inf))
+                    new_pop.append([mut_ind, np.inf])
+            else:
+                raise ValueError(f'Unrecognized norm: {self.norm}')
 
-            print(f'Elitist: {min(cur_pop, key=itemgetter(1))[1]:.5f}')
+            # print(f'Elitist: {min(cur_pop, key=itemgetter(1))[1]:.5f}')
 
             cur_pop = new_pop
             gen += 1
@@ -80,6 +89,74 @@ class EvoAttack():
         return best
 
     def mutation(self, x_hat):
+        if self.norm == 'l2':
+            return self.l2_mutation(x_hat)
+        elif self.norm == 'linf':
+            return self.linf_mutation(x_hat)
+        else:
+            raise ValueError(f'Unrecognized norm: {self.norm}')
+
+    def l2_mutation(self, x_hat):
+        min_val, max_val = 0, 1
+        p = self.p_selection(self.p_init, self.queries, self.n_gen * self.pop_size)
+        c = x_hat[0].shape[1]
+        h = x_hat[0].shape[2]
+        w = x_hat[0].shape[3]
+        n_features = c * h * w
+
+        x_curr = x_hat[0]
+        delta_curr = self.x - x_curr
+
+        s = max(int(round(np.sqrt(p * n_features / c))), 3)
+
+        if s % 2 == 0:
+            s += 1
+
+        s2 = s + 0
+
+        ### window_1
+        center_h = np.random.randint(0, h - s)
+        center_w = np.random.randint(0, w - s)
+        new_deltas_mask = torch.zeros(x_curr.shape)
+        new_deltas_mask[:, :, center_h:center_h + s, center_w:center_w + s] = 1.0
+
+        ### window_2
+        center_h_2 = np.random.randint(0, h - s2)
+        center_w_2 = np.random.randint(0, w - s2)
+        new_deltas_mask_2 = torch.zeros(x_curr.shape)
+        new_deltas_mask_2[:, :, center_h_2:center_h_2 + s2, center_w_2:center_w_2 + s2] = 1.0
+        ## commented because it's not used:
+        # norms_window_2 = torch.sqrt(
+        #     torch.sum(delta_curr[:, :, center_h_2:center_h_2 + s2, center_w_2:center_w_2 + s2] ** 2, axis=(-2, -1),
+        #            keepdims=True))
+
+        ### compute total norm available
+        curr_norms_window = torch.sqrt(
+            torch.sum(((self.x - x_curr) * new_deltas_mask) ** 2, axis=(2, 3), keepdims=True))
+        curr_norms_image = torch.sqrt(torch.sum((self.x - x_curr) ** 2, axis=(1, 2, 3), keepdims=True))
+        mask_2 = torch.maximum(new_deltas_mask, new_deltas_mask_2)
+        norms_windows = torch.sqrt(torch.sum((delta_curr * mask_2) ** 2, axis=(2, 3), keepdims=True))
+
+        ### create the updates
+        new_deltas = torch.ones([x_curr.shape[0], c, s, s])
+        new_deltas = new_deltas * meta_pseudo_gaussian_pert(s).reshape([1, 1, s, s])
+        new_deltas *= np.random.choice([-1, 1], size=[x_curr.shape[0], c, 1, 1])
+        old_deltas = delta_curr[:, :, center_h:center_h + s, center_w:center_w + s] / (1e-10 + curr_norms_window)
+        new_deltas += old_deltas
+        new_deltas = new_deltas / torch.sqrt(torch.sum(new_deltas ** 2, axis=(2, 3), keepdims=True)) * (
+                np.maximum(self.eps ** 2 - curr_norms_image ** 2, 0) / c + norms_windows ** 2) ** 0.5
+        delta_curr[:, :, center_h_2:center_h_2 + s2, center_w_2:center_w_2 + s2] = 0.0  # set window_2 to 0
+        delta_curr[:, :, center_h:center_h + s, center_w:center_w + s] = new_deltas + 0  # update window_1
+
+        x_new = x_curr + delta_curr / torch.sqrt(torch.sum(delta_curr ** 2, axis=(1, 2, 3), keepdims=True)) * self.eps
+        x_new = torch.clip(x_new, min_val, max_val)
+        curr_norms_image = torch.sqrt(torch.sum((x_new - x_curr) ** 2, axis=(1, 2, 3), keepdims=True))
+        if curr_norms_image > self.eps + 0.1:
+            print(f'eps is {self.eps} but norm is {curr_norms_image}')
+        x_hat = self.project(x_new)
+        return x_hat
+
+    def linf_mutation(self, x_hat):
         p = self.p_selection(self.p_init, self.queries, self.n_gen * self.pop_size)
         c = x_hat[0].shape[1]
         h = x_hat[0].shape[2]
@@ -168,7 +245,9 @@ class EvoAttack():
             center_h += s
 
         return torch.clip(
-            x_hat + delta_init / torch.sqrt(torch.sum(delta_init ** 2, axis=(1, 2, 3), keepdims=True)) * self.eps, 0, 1)
+            x_hat + delta_init / torch.sqrt(torch.sum(delta_init ** 2, axis=(1, 2, 3), keepdims=True)) * self.eps,
+            0, 1
+        )
 
     def vertical_mutation(self, x_hat):
         size = np.asarray(self.x.shape)

@@ -8,6 +8,7 @@ from attacks.square_attack import square_attack
 from attack import EvoAttack
 from utils import compute_accuracy
 
+
 MODEL_PATH = './models/state_dicts'
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 models_names = ['custom', 'inception_v3', 'resnet50', 'vgg16_bn', 'vit_l_16']
