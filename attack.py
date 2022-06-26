@@ -9,6 +9,8 @@ from l2_utils import meta_pseudo_gaussian_pert
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
+elitism_enabled = False  # TODO
+
 
 def elitism(cur_pop):
     elite = min(cur_pop, key=itemgetter(1))[0]
@@ -40,9 +42,11 @@ class EvoAttack():
         while not self.termination_condition(cur_pop, gen):
             self.fitness(cur_pop)
             new_pop = []
-            elite = elitism(cur_pop)
 
-            new_pop.append([elite, np.inf])
+            if elitism_enabled:
+                elite = elitism(cur_pop)
+                new_pop.append([elite, np.inf])
+
             if self.norm == 'linf':
                 for i in range((self.pop_size - 1) // 3):
                     parent1 = self.selection(cur_pop)
@@ -56,7 +60,7 @@ class EvoAttack():
                     new_pop.append([mut_offspring2, np.inf])
             elif self.norm == 'l2':
                 # for l2 we do only mutation, without crossover
-                for i in range(self.pop_size - 1):  # we already added 1 elitist
+                for i in range(self.pop_size - int(elitism_enabled)):  # we might have already added 1 elitist
                     ind, _ = self.selection(cur_pop)
                     mut_ind = self.mutation((ind, np.inf))
                     new_pop.append([mut_ind, np.inf])
@@ -68,7 +72,7 @@ class EvoAttack():
             cur_pop = new_pop
             gen += 1
 
-        return self.best_x_hat, self.queries
+        return {'x_hat': self.best_x_hat, 'queries': self.queries, 'gen': gen + 1}
 
     def crossover(self, parent1, parent2):
         parent1 = parent1[0].flatten()

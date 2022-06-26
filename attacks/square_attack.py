@@ -11,7 +11,7 @@ from utils import get_normalization
 #     adv_images = atk(x_test, y_test.unsqueeze(dim=0))
 #     return adv_images, atk.queries
 
-def square_attack(dataset, init_model, min_ball, max_ball, x_test, i, square_adv, n_iter, delta):
+def square_attack(dataset, init_model, min_ball, max_ball, x_test, i, square_adv, n_iter, delta, norm):
     square_classifier = PyTorchClassifier(
         model=init_model,
         clip_values=(min_ball.numpy(), max_ball.numpy()),
@@ -21,7 +21,13 @@ def square_attack(dataset, init_model, min_ball, max_ball, x_test, i, square_adv
         preprocessing=get_normalization(dataset)
     )
 
-    square_attack = SquareAttack(estimator=square_classifier, norm='inf', max_iter=n_iter, p_init=0.05, eps=delta)
+    if norm == 'linf':
+        sq_norm = 'inf'
+    elif norm == 'l2':
+        sq_norm = 2
+    else:
+        raise ValueError
+    square_attack = SquareAttack(estimator=square_classifier, norm=sq_norm, max_iter=n_iter, p_init=0.05, eps=delta)
     square_x_test_adv = square_attack.generate(x=x_test.numpy())
     if i != 0:
         square_adv = np.concatenate((square_x_test_adv, square_adv), axis=0)

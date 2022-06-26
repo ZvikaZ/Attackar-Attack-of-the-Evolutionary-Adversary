@@ -10,7 +10,7 @@
 which python
 hostname
 # python main.py --model inception_v3 --dataset imagenet --eps 5 --norm l2    # --images 1
-python main.py --model inception_v3 --dataset imagenet --eps 5 --norm l2 --images 10
+python main.py --model inception_v3 --dataset imagenet --eps 5 --norm l2 --images 10 --gen 1000 --pop 1
 
 #python main.py --model inception_v3 --dataset imagenet --eps 0.025
 #python main.py --model custom --dataset mnist --eps 0.225

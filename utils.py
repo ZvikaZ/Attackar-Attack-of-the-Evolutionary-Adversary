@@ -126,9 +126,8 @@ def print_initialize(dataset, model, img, label, count, n_images):
     print(f'Initial class prediction: {model(normalized_img).argmax(dim=1).item()}')
     print(f'Initial probability: {F.softmax(model(normalized_img), dim=1).max():.4f}')
 
-
-def print_success(dataset, model, n_queries, label, best_individual):
-    best_individual = torch.tensor(best_individual).to(device)
+def print_success(dataset, model, result, label):
+    best_individual = torch.tensor(result['x_hat']).to(device)
     normalized_best_inv = normalize(dataset, best_individual)
     print("-------------------------------")
     print(f'Evolution succeeded!')
@@ -136,4 +135,5 @@ def print_success(dataset, model, n_queries, label, best_individual):
     print(f'Current prediction: {model(normalized_best_inv).argmax(dim=1).item()}')
     print(
         f'Current probability (orig class): {F.softmax(model(normalized_best_inv), dim=1)[0][label].item():.4f}')
-    print(f'Number of queries: {n_queries}')
+    print(f'Number of queries: {result["queries"]}')
+    print(f'Number of generations: {result["gen"]}')
