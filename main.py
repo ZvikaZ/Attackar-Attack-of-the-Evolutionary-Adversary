@@ -8,6 +8,12 @@ from attacks.square_attack import square_attack
 from attack import EvoAttack
 from utils import compute_accuracy
 
+CONSTRAIN_RANDOMNESS = True  # TODO
+
+if CONSTRAIN_RANDOMNESS:
+    import random
+    np.random.seed(1)
+    random.seed(1)
 
 MODEL_PATH = './models/state_dicts'
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -17,7 +23,7 @@ datasets_names = ['mnist', 'imagenet', 'cifar10']
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description="Runs Evolutionary Adversarial Attacks on various Deep Learning models")
-    parser.add_argument("--norm", "-n", choices=['l2','linf'], default='linf', help="Use l_2 or l_inf norm")
+    parser.add_argument("--norm", "-n", choices=['l2', 'linf'], default='linf', help="Use l_2 or l_inf norm")
     parser.add_argument("--model", "-m", choices=models_names, default='custom',
                         help="Run only specific model")
     parser.add_argument("--dataset", "-da", choices=datasets_names, default='cifar10',
@@ -66,7 +72,7 @@ if __name__ == '__main__':
             print_initialize(dataset, init_model, x, y, count, n_images)
             images_indices.append(i)
             result = EvoAttack(dataset=dataset, model=init_model, x=x, y=y, eps=eps, n_gen=n_gen,
-                                       pop_size=pop_size, tournament=tournament, norm=norm).generate()
+                               pop_size=pop_size, tournament=tournament, norm=norm).generate()
 
             if result['x_hat'] is not None:
                 success_count += 1
@@ -83,15 +89,15 @@ if __name__ == '__main__':
     x_test, y_test = x_test[images_indices], y_test[images_indices]
     square_queries, square_adv = [], None
     for i in range(len(x_test)):
-
         min_ball = torch.tile(torch.maximum(x_test[[i]] - eps, min_pixel_value), (1, 1))
         max_ball = torch.tile(torch.minimum(x_test[[i]] + eps, max_pixel_value), (1, 1))
 
-        square_adv, square_n_queries = square_attack(dataset, init_model, min_ball, max_ball, x_test[[i]], i, square_adv, n_iter, eps, norm)
+        square_adv, square_n_queries = square_attack(dataset, init_model, min_ball, max_ball, x_test[[i]], i,
+                                                     square_adv, n_iter, eps, norm)
         square_queries.append(square_n_queries)
 
-    square_accuracy = compute_accuracy(dataset, init_model, square_adv, y_test, min_pixel_value, max_pixel_value, to_tensor=True, to_normalize=True)
-
+    square_accuracy = compute_accuracy(dataset, init_model, square_adv, y_test, min_pixel_value, max_pixel_value,
+                                       to_tensor=True, to_normalize=True)
 
     print()
     print('########################################')
