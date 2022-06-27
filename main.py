@@ -72,7 +72,7 @@ if __name__ == '__main__':
             print_initialize(dataset, init_model, x, y, count, n_images)
             images_indices.append(i)
             result = EvoAttack(dataset=dataset, model=init_model, x=x, y=y, eps=eps, n_gen=n_gen,
-                               pop_size=pop_size, tournament=tournament, norm=norm).generate()
+                               pop_size=pop_size, tournament=tournament, norm=norm, count=count).generate()
 
             if result['x_hat'] is not None:
                 success_count += 1

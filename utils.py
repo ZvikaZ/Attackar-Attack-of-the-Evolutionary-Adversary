@@ -8,6 +8,8 @@ import torch.nn.functional as F
 import torch.nn as nn
 import numpy as np
 import torch
+import matplotlib.pyplot as plt
+from pathlib import Path
 
 from models.inception import inception_v3
 from models.resnet import resnet50
@@ -138,3 +140,19 @@ def print_success(dataset, model, result, label):
         f'Current probability (orig class): {F.softmax(model(normalized_best_inv), dim=1)[0][label].item():.4f}')
     print(f'Number of queries: {result["queries"]}')
     print(f'Number of generations: {result["gen"]}')
+
+
+def plt_torch_image(torch_img, torch_orig, title=''):
+    assert torch_img.shape == torch.Size([1, 3, 224, 224])
+    im = torch_img.squeeze().cpu().numpy().transpose(1, 2, 0)
+    assert im.shape == (224, 224, 3)
+
+    # it's the negative of delta - easier to see on white background
+    delta = 1 - abs(torch_img - torch_orig).squeeze().cpu().numpy().transpose(1, 2, 0)
+
+    fig, (ax1, ax2) = plt.subplots(1, 2)  # , figsize=(4, 4)
+    plt.suptitle(title)
+    ax1.imshow(im)
+    ax2.imshow(delta)
+    plt.savefig(Path('figures') / title.replace(' ', '_').replace(':', '').replace(',', '').lower())
+    plt.show()

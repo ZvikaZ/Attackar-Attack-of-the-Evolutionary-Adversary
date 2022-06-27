@@ -7,3 +7,4 @@ models/state_dicts/*.pt
 pycharm_session_*.log
 slurm-*.out
 results/
+figures/*.png

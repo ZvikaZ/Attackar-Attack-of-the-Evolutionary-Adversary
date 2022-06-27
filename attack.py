@@ -4,7 +4,7 @@ import numpy as np
 import random
 import torch
 
-from utils import normalize
+from utils import normalize, plt_torch_image
 from l2_utils import meta_pseudo_gaussian_pert
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -19,7 +19,7 @@ def elitism(cur_pop):
 
 class EvoAttack():
     def __init__(self, dataset, model, x, y, n_gen=500, pop_size=40, eps=0.3, tournament=35, defense=False,
-                 norm='linf'):
+                 norm='linf', count=None):
         self.dataset = dataset
         self.model = model
         self.x = x
@@ -35,6 +35,7 @@ class EvoAttack():
         self.min_ball = torch.tile(torch.maximum(self.x - eps, torch.tensor(0)), (1, 1))
         self.max_ball = torch.tile(torch.minimum(self.x + eps, torch.tensor(1)), (1, 1))
         self.norm = norm
+        self.count = count
 
     def generate(self):
         gen = 0
@@ -63,6 +64,7 @@ class EvoAttack():
                 for i in range(self.pop_size - int(elitism_enabled)):  # we might have already added 1 elitist
                     ind, _ = self.selection(cur_pop)
                     mut_ind = self.mutation((ind, np.inf))
+                    plt_torch_image(ind, self.x, f'Evo {self.count}: Gen {gen}, ind {i}')
                     new_pop.append([mut_ind, np.inf])
             else:
                 raise ValueError(f'Unrecognized norm: {self.norm}')
