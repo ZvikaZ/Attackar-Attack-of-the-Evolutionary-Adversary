@@ -6,7 +6,6 @@ import torch
 import math
 
 from utils import normalize, plt_torch_image
-from l2_utils import meta_pseudo_gaussian_pert, get_perturbation
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -209,7 +208,7 @@ class EvoAttack():
 
         delta_new = (
                 np.ones(new_deltas_size)
-                * get_perturbation(height_tile).reshape(perturbation_size)
+                * self.get_l2_perturbation(height_tile).reshape(perturbation_size)
                 * np.random.choice([-1, 1], size=random_choice_size)
         )
 
@@ -262,65 +261,35 @@ class EvoAttack():
         )
         return torch.from_numpy(x_hat_new).to(device)
 
-    def old_l2_mutation(self, x_hat):
-        min_val, max_val = 0, 1
-        p = self.p_selection(self.p_init, self.queries, self.n_gen * self.pop_size)
-        c = x_hat[0].shape[1]
-        h = x_hat[0].shape[2]
-        w = x_hat[0].shape[3]
-        n_features = c * h * w
+    def get_l2_perturbation(self, height):
+        delta = np.zeros([height, height])
+        gaussian_perturbation = np.zeros([height // 2, height])
 
-        x_curr = x_hat[0]
-        delta_curr = self.x - x_curr
+        x_c = height // 4
+        y_c = height // 2
 
-        s = max(int(round(np.sqrt(p * n_features / c))), 3)
+        for i_y in range(y_c):
+            gaussian_perturbation[
+            max(x_c, 0): min(x_c + (2 * i_y + 1), height // 2),
+            max(0, y_c): min(y_c + (2 * i_y + 1), height),
+            ] += 1.0 / ((i_y + 1) ** 2)
+            x_c -= 1
+            y_c -= 1
 
-        if s % 2 == 0:
-            s += 1
+        gaussian_perturbation /= np.sqrt(np.sum(gaussian_perturbation ** 2))
 
-        s2 = s + 0
+        delta[: height // 2] = gaussian_perturbation
+        delta[height // 2: height // 2 + gaussian_perturbation.shape[0]] = -gaussian_perturbation
 
-        ### window_1
-        center_h = np.random.randint(0, h - s)
-        center_w = np.random.randint(0, w - s)
-        new_deltas_mask = torch.zeros(x_curr.shape).to(device)
-        new_deltas_mask[:, :, center_h:center_h + s, center_w:center_w + s] = 1.0
+        delta /= np.sqrt(np.sum(delta ** 2))
 
-        ### window_2
-        center_h_2 = np.random.randint(0, h - s2)
-        center_w_2 = np.random.randint(0, w - s2)
-        new_deltas_mask_2 = torch.zeros(x_curr.shape).to(device)
-        new_deltas_mask_2[:, :, center_h_2:center_h_2 + s2, center_w_2:center_w_2 + s2] = 1.0
-        ## commented because it's not used:
-        # norms_window_2 = torch.sqrt(
-        #     torch.sum(delta_curr[:, :, center_h_2:center_h_2 + s2, center_w_2:center_w_2 + s2] ** 2, axis=(-2, -1),
-        #            keepdims=True))
+        if random.random() > 0.5:
+            delta = np.transpose(delta)
 
-        ### compute total norm available
-        curr_norms_window = torch.sqrt(
-            torch.sum(((self.x - x_curr) * new_deltas_mask) ** 2, axis=(2, 3), keepdims=True))
-        curr_norms_image = torch.sqrt(torch.sum((self.x - x_curr) ** 2, axis=(1, 2, 3), keepdims=True))
-        mask_2 = torch.maximum(new_deltas_mask, new_deltas_mask_2)
-        norms_windows = torch.sqrt(torch.sum((delta_curr * mask_2) ** 2, axis=(2, 3), keepdims=True))
+        if random.random() > 0.5:
+            delta = -delta
 
-        ### create the updates
-        new_deltas = torch.ones([x_curr.shape[0], c, s, s]).to(device)
-        new_deltas = new_deltas * meta_pseudo_gaussian_pert(s).reshape([1, 1, s, s])
-        new_deltas *= torch.tensor(np.random.choice([-1, 1], size=[x_curr.shape[0], c, 1, 1])).to(device)
-        old_deltas = delta_curr[:, :, center_h:center_h + s, center_w:center_w + s] / (1e-10 + curr_norms_window)
-        new_deltas += old_deltas
-        new_deltas = new_deltas / torch.sqrt(torch.sum(new_deltas ** 2, axis=(2, 3), keepdims=True)) * (
-                torch.maximum(self.eps ** 2 - curr_norms_image ** 2, torch.tensor(0)) / c + norms_windows ** 2) ** 0.5
-        delta_curr[:, :, center_h_2:center_h_2 + s2, center_w_2:center_w_2 + s2] = 0.0  # set window_2 to 0
-        delta_curr[:, :, center_h:center_h + s, center_w:center_w + s] = new_deltas + 0  # update window_1
-
-        x_new = x_curr + delta_curr / torch.sqrt(torch.sum(delta_curr ** 2, axis=(1, 2, 3), keepdims=True)) * self.eps
-        x_new = torch.clip(x_new, min_val, max_val)
-        curr_norms_image = torch.sqrt(torch.sum((x_new - x_curr) ** 2, axis=(1, 2, 3), keepdims=True))
-        if curr_norms_image > self.eps * 1.1:
-            print(f'eps is {self.eps} but norm is {curr_norms_image}')
-        x_hat = self.project(x_new)
-        return x_hat
+        return delta
 
     def linf_mutation(self, x_hat):
         p = self.p_selection(self.p_init, self.queries, self.n_gen * self.pop_size)
@@ -421,7 +390,7 @@ class EvoAttack():
                     perturbation_size = (1, height_tile, height_tile, 1)
                     random_size = (1, 1, channels)
 
-                perturbation = get_perturbation(height_tile).reshape(perturbation_size) * np.random.choice(
+                perturbation = self.get_l2_perturbation(height_tile).reshape(perturbation_size) * np.random.choice(
                     [-1, 1], size=random_size
                 )
 
@@ -437,35 +406,12 @@ class EvoAttack():
             height_start += height_tile
 
         x_hat_new = np.clip(
-            x_hat.cpu().detach().numpy() + delta_init / np.sqrt(np.sum(delta_init ** 2, axis=(1, 2, 3), keepdims=True)) * self.eps,
+            x_hat.cpu().detach().numpy() + delta_init / np.sqrt(
+                np.sum(delta_init ** 2, axis=(1, 2, 3), keepdims=True)) * self.eps,
             min_val,
             max_val,
         )
         return torch.from_numpy(x_hat_new).to(device)
-
-
-    def old_l2_init(self, x_hat):
-        c, h, w = x_hat.shape[1:]
-        assert x_hat.shape[0] == 1
-
-        ### initialization
-        delta_init = torch.zeros(x_hat.shape).to(device)
-        s = h // 5  # s is initial square side for bumps
-        sp_init = (h - s * 5) // 2
-        center_h = sp_init + 0
-        for counter in range(h // s):
-            center_w = sp_init + 0
-            for counter2 in range(w // s):
-                delta_init[:, :, center_h:center_h + s, center_w:center_w + s] += \
-                    meta_pseudo_gaussian_pert(s).reshape([1, 1, s, s]) * \
-                    torch.from_numpy(np.random.choice([-1, 1], size=[x_hat.shape[0], c, 1, 1])).to(device)
-                center_w += s
-            center_h += s
-
-        return torch.clip(
-            x_hat + delta_init / torch.sqrt(torch.sum(delta_init ** 2, axis=(1, 2, 3), keepdims=True)) * self.eps,
-            0, 1
-        )
 
     def vertical_mutation(self, x_hat):
         size = np.asarray(self.x.shape)
