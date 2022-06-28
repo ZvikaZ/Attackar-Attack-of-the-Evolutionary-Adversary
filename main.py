@@ -86,6 +86,7 @@ if __name__ == '__main__':
                 print('Evolution failed!')
             evo_queries.append(result['queries'])
 
+    print('\n########################################')
     x_test, y_test = x_test[images_indices], y_test[images_indices]
     square_queries, square_adv = [], None
     for i in range(len(x_test)):
@@ -108,7 +109,7 @@ if __name__ == '__main__':
     print(f'\tTournament: {tournament}')
     print(f'\tMetric: linf, epsilon: {eps:.4f}')
     print(f'\tSquare:')
-    print(f'\t\tSquare - test accuracy: {square_accuracy * 100:.4f}%')
+    print(f'\t\tSquare - attack success rate: {(1 - square_accuracy) * 100:.4f}%')
     print(f'\t\tSquare - queries: {square_queries}')
     print(f'\t\tSquare - queries (median): {int(np.median(square_queries))}')
     print(f'\tEvo:')

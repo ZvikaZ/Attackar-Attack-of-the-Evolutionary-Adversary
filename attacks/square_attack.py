@@ -32,7 +32,7 @@ def square_attack(dataset, init_model, min_ball, max_ball, x_test, i, square_adv
                                  verbose=False)
     square_x_test_adv = square_attack.generate(x=x_test.numpy())
     if i != 0:
-        square_adv = np.concatenate((square_x_test_adv, square_adv), axis=0)
+        square_adv = np.concatenate((square_adv, square_x_test_adv), axis=0)
     else:
         square_adv = square_x_test_adv
     return square_adv, square_attack.queries
