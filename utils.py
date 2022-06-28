@@ -20,6 +20,8 @@ print("Checking for gpu...")
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print(f"Running on {device}")
 
+SHOW_IMAGES = False
+
 
 def compute_accuracy(dataset, init_model, x_test, y_test, min_pixel_value, max_pixel_value, to_tensor=False,
                      to_normalize=False):
@@ -143,16 +145,18 @@ def print_success(dataset, model, result, label):
 
 
 def plt_torch_image(torch_img, torch_orig, title=''):
-    assert torch_img.shape == torch.Size([1, 3, 224, 224])
-    im = torch_img.squeeze().cpu().numpy().transpose(1, 2, 0)
-    assert im.shape == (224, 224, 3)
+    if SHOW_IMAGES:
+        assert torch_img.shape == torch.Size([1, 3, 224, 224])
+        im = torch_img.squeeze().cpu().numpy().transpose(1, 2, 0)
+        assert im.shape == (224, 224, 3)
 
-    # it's the negative of delta - easier to see on white background
-    delta = 1 - abs(torch_img - torch_orig).squeeze().cpu().numpy().transpose(1, 2, 0)
+        # easier to see on white(=1) background instead of black(=0)
+        delta = 1 - abs(torch_img - torch_orig).squeeze().cpu().numpy().transpose(1, 2, 0)
+        change_percentage = np.sum(delta <= 0.999) / delta.size * 100
 
-    fig, (ax1, ax2) = plt.subplots(1, 2)  # , figsize=(4, 4)
-    plt.suptitle(title)
-    ax1.imshow(im)
-    ax2.imshow(delta)
-    plt.savefig(Path('figures') / title.replace(' ', '_').replace(':', '').replace(',', '').lower())
-    plt.show()
+        fig, (ax1, ax2) = plt.subplots(1, 2)
+        plt.suptitle(f'{title}: {change_percentage:.4}%')
+        ax1.imshow(im)
+        ax2.imshow(delta)
+        plt.savefig(Path('figures') / title.replace(' ', '_').replace(':', '').replace(',', '').lower())
+        plt.show()

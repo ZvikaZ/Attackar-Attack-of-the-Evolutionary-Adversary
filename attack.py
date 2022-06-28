@@ -3,9 +3,10 @@ from operator import itemgetter
 import numpy as np
 import random
 import torch
+import math
 
 from utils import normalize, plt_torch_image
-from l2_utils import meta_pseudo_gaussian_pert
+from l2_utils import meta_pseudo_gaussian_pert, get_perturbation
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -102,7 +103,166 @@ class EvoAttack():
         else:
             raise ValueError(f'Unrecognized norm: {self.norm}')
 
-    def l2_mutation(self, x_hat):
+    def l2_mutation(self, x_hat_orig):
+        channels_first = True  # TODO make it configurable, or remove all those 'if's
+        min_val, max_val = 0, 1
+
+        if channels_first:
+            channels = self.x.shape[1]
+            height = self.x.shape[2]
+            width = self.x.shape[3]
+        else:
+            height = self.x.shape[1]
+            width = self.x.shape[2]
+            channels = self.x.shape[3]
+
+        # TODO move all NP to PyTorch
+        # currently we transfer all torch tensors to np arrays
+        x_hat = x_hat_orig[0].cpu().detach().numpy()
+        x_orig = self.x.cpu().detach().numpy()
+
+        percentage_of_elements = self.p_selection(self.p_init, self.queries, self.n_gen * self.pop_size)
+
+        delta_x_hat_init = x_hat - x_orig
+
+        height_tile = max(int(round(math.sqrt(percentage_of_elements * height * width))), 3)
+
+        if height_tile % 2 == 0:
+            height_tile += 1
+        height_tile_2 = height_tile
+
+        height_start = np.random.randint(0, height - height_tile)
+        width_start = np.random.randint(0, width - height_tile)
+
+        new_deltas_mask = np.zeros(x_orig.shape)
+        if channels_first:
+            new_deltas_mask[
+            :, :, height_start: height_start + height_tile, width_start: width_start + height_tile
+            ] = 1.0
+            w_1_norm = np.sqrt(
+                np.sum(
+                    delta_x_hat_init[
+                    :,
+                    :,
+                    height_start: height_start + height_tile,
+                    width_start: width_start + height_tile,
+                    ]
+                    ** 2,
+                    axis=(2, 3),
+                    keepdims=True,
+                )
+            )
+        else:
+            new_deltas_mask[
+            :, height_start: height_start + height_tile, width_start: width_start + height_tile, :
+            ] = 1.0
+            w_1_norm = np.sqrt(
+                np.sum(
+                    delta_x_hat_init[
+                    :,
+                    height_start: height_start + height_tile,
+                    width_start: width_start + height_tile,
+                    :,
+                    ]
+                    ** 2,
+                    axis=(1, 2),
+                    keepdims=True,
+                )
+            )
+
+        height_2_start = np.random.randint(0, height - height_tile_2)
+        width_2_start = np.random.randint(0, width - height_tile_2)
+
+        new_deltas_mask_2 = np.zeros(x_orig.shape)
+        if channels_first:
+            new_deltas_mask_2[
+            :,
+            :,
+            height_2_start: height_2_start + height_tile_2,
+            width_2_start: width_2_start + height_tile_2,
+            ] = 1.0
+        else:
+            new_deltas_mask_2[
+            :,
+            height_2_start: height_2_start + height_tile_2,
+            width_2_start: width_2_start + height_tile_2,
+            :,
+            ] = 1.0
+
+        norms_x_hat = np.sqrt(np.sum((x_hat - x_orig) ** 2, axis=(1, 2, 3), keepdims=True))
+        w_norm = np.sqrt(
+            np.sum(
+                (delta_x_hat_init * np.maximum(new_deltas_mask, new_deltas_mask_2)) ** 2,
+                axis=(1, 2, 3),
+                keepdims=True,
+            )
+        )
+
+        if channels_first:
+            new_deltas_size = [x_orig.shape[0], channels, height_tile, height_tile]
+            random_choice_size = [x_orig.shape[0], channels, 1, 1]
+            perturbation_size = (1, 1, height_tile, height_tile)
+        else:
+            new_deltas_size = [x_orig.shape[0], height_tile, height_tile, channels]
+            random_choice_size = [x_orig.shape[0], 1, 1, channels]
+            perturbation_size = (1, height_tile, height_tile, 1)
+
+        delta_new = (
+                np.ones(new_deltas_size)
+                * get_perturbation(height_tile).reshape(perturbation_size)
+                * np.random.choice([-1, 1], size=random_choice_size)
+        )
+
+        if channels_first:
+            delta_new += delta_x_hat_init[
+                         :, :, height_start: height_start + height_tile, width_start: width_start + height_tile
+                         ] / (np.maximum(1e-9, w_1_norm))
+        else:
+            delta_new += delta_x_hat_init[
+                         :, height_start: height_start + height_tile, width_start: width_start + height_tile, :
+                         ] / (np.maximum(1e-9, w_1_norm))
+
+        diff_norm = (self.eps * np.ones(delta_new.shape)) ** 2 - norms_x_hat ** 2
+        diff_norm[diff_norm < 0.0] = 0.0
+
+        if channels_first:
+            delta_new /= np.sqrt(np.sum(delta_new ** 2, axis=(2, 3), keepdims=True)) * np.sqrt(
+                diff_norm / channels + w_norm ** 2
+            )
+            delta_x_hat_init[
+            :,
+            :,
+            height_2_start: height_2_start + height_tile_2,
+            width_2_start: width_2_start + height_tile_2,
+            ] = 0.0
+            delta_x_hat_init[
+            :, :, height_start: height_start + height_tile, width_start: width_start + height_tile
+            ] = delta_new
+        else:
+            delta_new /= np.sqrt(np.sum(delta_new ** 2, axis=(1, 2), keepdims=True)) * np.sqrt(
+                diff_norm / channels + w_norm ** 2
+            )
+            delta_x_hat_init[
+            :,
+            height_2_start: height_2_start + height_tile_2,
+            width_2_start: width_2_start + height_tile_2,
+            :,
+            ] = 0.0
+            delta_x_hat_init[
+            :, height_start: height_start + height_tile, width_start: width_start + height_tile, :
+            ] = delta_new
+
+        x_hat_new = np.clip(
+            x_orig
+            + self.eps
+            * delta_x_hat_init
+            / np.sqrt(np.sum(delta_x_hat_init ** 2, axis=(1, 2, 3), keepdims=True)),
+            min_val,
+            max_val,
+        )
+        return torch.from_numpy(x_hat_new).to(device)
+
+    def old_l2_mutation(self, x_hat):
         min_val, max_val = 0, 1
         p = self.p_selection(self.p_init, self.queries, self.n_gen * self.pop_size)
         c = x_hat[0].shape[1]
@@ -233,6 +393,58 @@ class EvoAttack():
         return cur_pop
 
     def l2_init(self, x_hat):
+        channels_first = True  # TODO make it configurable, or remove all those 'if's
+        min_val, max_val = 0, 1
+
+        if channels_first:
+            channels = self.x.shape[1]
+            height = self.x.shape[2]
+            width = self.x.shape[3]
+        else:
+            height = self.x.shape[1]
+            width = self.x.shape[2]
+            channels = self.x.shape[3]
+
+        n_tiles = 5
+        height_tile = height // n_tiles
+
+        delta_init = np.zeros(x_hat.shape, dtype=np.float32)
+
+        height_start = 0
+        for _ in range(n_tiles):
+            width_start = 0
+            for _ in range(n_tiles):
+                if channels_first:
+                    perturbation_size = (1, 1, height_tile, height_tile)
+                    random_size = (channels, 1, 1)
+                else:
+                    perturbation_size = (1, height_tile, height_tile, 1)
+                    random_size = (1, 1, channels)
+
+                perturbation = get_perturbation(height_tile).reshape(perturbation_size) * np.random.choice(
+                    [-1, 1], size=random_size
+                )
+
+                if channels_first:
+                    delta_init[
+                    :, :, height_start: height_start + height_tile, width_start: width_start + height_tile
+                    ] += perturbation
+                else:
+                    delta_init[
+                    :, height_start: height_start + height_tile, width_start: width_start + height_tile, :
+                    ] += perturbation
+                width_start += height_tile
+            height_start += height_tile
+
+        x_hat_new = np.clip(
+            x_hat.cpu().detach().numpy() + delta_init / np.sqrt(np.sum(delta_init ** 2, axis=(1, 2, 3), keepdims=True)) * self.eps,
+            min_val,
+            max_val,
+        )
+        return torch.from_numpy(x_hat_new).to(device)
+
+
+    def old_l2_init(self, x_hat):
         c, h, w = x_hat.shape[1:]
         assert x_hat.shape[0] == 1
 
