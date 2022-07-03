@@ -1,0 +1,4 @@
+- Use slurm
+- Consider crossover (with projection?)
+- pop/gen tradeoff
+- Return randomness to verify results

@@ -1,19 +1,13 @@
 import numpy as np
 import argparse
 import torch
+import random
 
 from utils import get_model, correctly_classified, print_initialize, print_success
 from data.datasets_loader import load_dataset
 from attacks.square_attack import square_attack
 from attack import EvoAttack
 from utils import compute_accuracy
-
-CONSTRAIN_RANDOMNESS = True  # TODO
-
-if CONSTRAIN_RANDOMNESS:
-    import random
-    np.random.seed(1)
-    random.seed(1)
 
 MODEL_PATH = './models/state_dicts'
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -40,7 +34,13 @@ if __name__ == '__main__':
                         help="Tournament selection")
     parser.add_argument("--path", "-ip", default='/cs_storage/public_datasets/ImageNet',
                         help="ImageNet dataset path")
+    parser.add_argument('--seed', type=int, default=None, help="Randomization seed; 'none' means to not set the seed")
     args = parser.parse_args()
+
+    if args.seed is not None:
+        print(f"Setting seed to {args.seed}")
+        np.random.seed(args.seed)
+        random.seed(args.seed)
 
     n_images = args.images
     dataset = args.dataset
