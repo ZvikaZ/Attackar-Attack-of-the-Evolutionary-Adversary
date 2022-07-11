@@ -1,4 +1,6 @@
 - Use slurm
 - Consider crossover (with projection?)
 - pop/gen tradeoff
-- Return randomness to verify results
+- remove failed from queries?
+- analyze failure at slurm-351733.out
+- pslurm updates
