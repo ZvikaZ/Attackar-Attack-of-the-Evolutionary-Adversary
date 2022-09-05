@@ -3,7 +3,6 @@ mamba activate attackar_ng
 pip install adversarial-robustness-toolbox==1.10
 pip install git+https://github.com/RobustBench/robustbench.git@f8690ed4fb4fb2a04439a336de6777742d34b897
 pip install git+https://github.com/ZvikaZ/pslurm
-pip install sorcery
 
 # to run optuna experiments:
 mamba install -c conda-forge optuna

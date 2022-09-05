@@ -3,22 +3,14 @@ from robustbench.utils import load_model
 from torchvision.utils import save_image
 from torchvision import transforms
 import torchvision.models
-from pathlib import Path
 import torch.nn.functional as F
 import torch.nn as nn
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
 from pathlib import Path
-import sys
 import os
 import re
-import pslurm
-from sorcery import dict_of
-
-from models.inception import inception_v3
-from models.resnet import resnet50
-from models.vgg import vgg16_bn
 
 print("Checking for gpu...")
 
@@ -26,6 +18,7 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print(f"Running on {device}")
 
 SHOW_IMAGES = True  # move to args
+SHOW_IMAGES = False  # TODO
 
 
 def compute_accuracy(dataset, init_model, x_test, y_test, min_pixel_value, max_pixel_value, to_tensor=False,
@@ -167,6 +160,7 @@ def plt_torch_image(torch_img, torch_orig, title=''):
         plt.show()
 
 
+# TODO del?
 def get_slurm_flags():
     if os.environ['HOSTNAME'] == 'gpu-master' or device == 'cuda':
         return '--gpus=1 --mem=8G'
@@ -174,16 +168,11 @@ def get_slurm_flags():
         return '--mem=8G'
 
 
-def pslurm_attack(n_images, dataset, model, norm, tournament, eps, pop_size, n_gen, imagenet_path, n_iter):
-    assert pslurm.is_slurm_installed()
-
-    command = f'{sys.executable} main.py --model {model} --dataset {dataset} --eps {eps} --norm {norm}' \
-              f' --images {n_images} --gen {n_gen} --pop {pop_size}' \
-              f' --tournament {tournament} --path {imagenet_path} ' \
-              f' --repeats 1 --no-slurm'
-    slurm_flags = get_slurm_flags()
-    job = pslurm.Slurm(command, flags=slurm_flags)
-    return job
+def get_median_index(d):
+    # https://stackoverflow.com/a/64126391/1543290, with small addition
+    ranks = d.rank(pct=True, numeric_only=True)
+    close_to_median = abs(ranks - 0.5)
+    return close_to_median.idxmin()
 
 
 def re_get(pattern, line, current):
@@ -192,17 +181,3 @@ def re_get(pattern, line, current):
         return int(float(r.group(1)))
     else:
         return current
-
-
-def get_result(output):
-    square_asr = None
-    square_queries_median = None
-    evo_asr = None
-    evo_queries_median = None
-    for line in output.splitlines():
-        # print(line, end='')
-        square_asr = re_get('Square - attack success rate: (.+)%', line, square_asr)
-        square_queries_median = re_get('Square - queries \(median\): (.+)', line, square_queries_median)
-        evo_asr = re_get('Evo - attack success rate: (.+)%', line, evo_asr)
-        evo_queries_median = re_get('Evo - queries \(median\): (.+)', line, evo_queries_median)
-    return dict_of(square_asr, square_queries_median, evo_asr, evo_queries_median)
