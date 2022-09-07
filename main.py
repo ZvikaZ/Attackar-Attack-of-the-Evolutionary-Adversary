@@ -93,6 +93,9 @@ def attack(n_images, dataset, model, norm, tournament, eps, pop_size, n_gen, ima
     square_asr = (1 - square_accuracy) * 100
     square_queries_median = np.median(square_queries)
 
+    delta_queries = evo_queries_median - square_queries_median
+    delta_asr = evo_asr - square_asr
+
     print()
     print('########################################')
     print(f'Summary of run:')
@@ -112,13 +115,18 @@ def attack(n_images, dataset, model, norm, tournament, eps, pop_size, n_gen, ima
         print(f'\t\tEvo - queries (median): {int(np.median(evo_queries))}')
     except ValueError:
         print(f'\t\tEvo - queries (median): NaN')
+    print(f'\tSummary:')
+    print(f'\t\tDelta - attack success rate: {delta_asr:.4f}%')
+    print(f'\t\tDelta - queries: {delta_queries}')
     print('########################################')
 
     return {
         'square_asr': square_asr,
         'square_queries_median': square_queries_median,
         'evo_asr': evo_asr,
-        'evo_queries_median': evo_queries_median
+        'evo_queries_median': evo_queries_median,
+        'delta_queries': delta_queries,
+        'delta_asr': delta_asr,
     }
 
 
@@ -141,15 +149,6 @@ def avarage_evo_results(results):
     median_queries_row = list(df.loc[[get_median_index(df)['queries']]].T.to_dict().values())[0]
     result.update(median_queries_row)
     return result
-
-    # TODO del
-    # m = pd.DataFrame(results).mean()
-    # m['delta_asr'] = m['evo_asr'] - m['square_asr']
-    # m['delta_queries'] = m['evo_queries_median'] - m['square_queries_median']
-    # print('########################################')
-    # print(f'Average over {repeats} runs:')
-    # print(m.to_string())
-    # return m
 
 
 if __name__ == '__main__':
