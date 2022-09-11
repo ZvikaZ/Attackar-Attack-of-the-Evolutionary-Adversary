@@ -3,9 +3,10 @@ import pandas as pd
 import argparse
 import torch
 import random
+import warnings
 
 import pslurm
-from func_slurm import FuncSlurm  # TODO - verify with 'pip' (currently it's link to local)
+from func_slurm import FuncSlurm
 
 from evo_attack import EvoAttack
 from utils import get_model, correctly_classified, print_initialize, print_success, compute_accuracy, get_median_index
@@ -18,41 +19,29 @@ models_names = ['custom', 'inception_v3', 'resnet50', 'vgg16_bn', 'vit_l_16']
 datasets_names = ['mnist', 'imagenet', 'cifar10']
 
 
-def generate_evo_attack(dataset, model, x, y, eps, n_gen, pop_size, tournament, norm, count):
+def generate_evo_attack(dataset, model, x, y, eps, n_gen, pop_size, tournament, norm, i):
     # needed for FuncSlurm
-    return EvoAttack(dataset=dataset, model=model, x=x, y=y, eps=eps, n_gen=n_gen,
-                     pop_size=pop_size, tournament=tournament, norm=norm, count=count).generate()
+    return EvoAttack(dataset=dataset, model=model, x=x, y=y, n_gen=n_gen, pop_size=pop_size, eps=eps,
+                     tournament=tournament, norm=norm, i=i).generate()
 
 
+# TODO use_slurm
 def attack(n_images, dataset, model, norm, tournament, eps, pop_size, n_gen, imagenet_path, n_iter, repeats, use_slurm):
     (x_test, y_test), min_pixel_value, max_pixel_value = load_dataset(dataset, imagenet_path)
     init_model = get_model(model, dataset, MODEL_PATH)
     # compute_accuracy(dataset, init_model, x_test, y_test, min_pixel_value, max_pixel_value, to_normalize=True)
-    count = 0
     success_count = 0
     evo_queries = []
     images_indices = []
-    for i, (x, y) in enumerate(zip(x_test, y_test)):
-        x = x.unsqueeze(dim=0).to(device)
-        y = y.to(device)
-
-        if count == n_images:
-            break
-
-        if correctly_classified(dataset, init_model, x, y) and count < n_images:
-            count += 1
-            print_initialize(dataset, init_model, x, y, count, n_images)
+    jobs = []
+    # TODO take more images if not all are used (not correctly_classified(..))
+    for i, (x, y) in enumerate(zip(x_test[:n_images], y_test[:n_images])):
+        jobs.append(FuncSlurm(evo_single_image, dataset, eps, i, init_model, n_gen, n_images, norm, pop_size, repeats,
+                              tournament, x, y))
+    for job in jobs:
+        result = job.get_result()
+        if result:
             images_indices.append(i)
-            jobs = []
-            for i in range(repeats):
-                jobs.append(
-                    FuncSlurm(generate_evo_attack, dataset=dataset, model=init_model, x=x, y=y, eps=eps, n_gen=n_gen,
-                              pop_size=pop_size, tournament=tournament, norm=norm, count=count))
-            results = []
-            for job in jobs:
-                results.append(job.get_result())
-            result = avarage_evo_results(results)
-
             if result['success']:
                 success_count += 1
                 # TODO is it used? commented because seems redundant
@@ -64,9 +53,9 @@ def attack(n_images, dataset, model, norm, tournament, eps, pop_size, n_gen, ima
                 print_success(dataset, init_model, result, y)
             else:
                 print('Evolution failed!')
-            evo_queries.append(result['queries'])
+            evo_queries.append(result['queries'])  # TODO maybe measure only successfull queries?
 
-    evo_asr = success_count / n_images * 100
+    evo_asr = success_count / len(images_indices) * 100
     evo_queries_median = np.median(evo_queries)
 
     print('\n########################################')
@@ -130,6 +119,27 @@ def attack(n_images, dataset, model, norm, tournament, eps, pop_size, n_gen, ima
     }
 
 
+def evo_single_image(dataset, eps, i, init_model, n_gen, n_images, norm, pop_size, repeats, tournament, x, y):
+    x = x.unsqueeze(dim=0).to(device)
+    y = y.to(device)
+    if correctly_classified(dataset, init_model, x, y):
+        print_initialize(dataset, init_model, x, y, i, n_images)
+        jobs = []
+        for i in range(repeats):
+            jobs.append(
+                FuncSlurm(generate_evo_attack, dataset=dataset, model=init_model, x=x, y=y, eps=eps, n_gen=n_gen,
+                          pop_size=pop_size, tournament=tournament, norm=norm, i=i))
+        results = []
+        for job in jobs:
+            try:
+                results.append(job.get_result())
+            except Exception as e:
+                warnings.warn('Attackar: FunSlurm got exception: ' + str(e))
+        return avarage_evo_results(results)
+    else:
+        return None
+
+
 def avarage_square_results(results):
     df = pd.DataFrame(results)
     median_queries_row = list(df.loc[[get_median_index(df)['queries']]].T.to_dict().values())[0]
@@ -137,6 +147,10 @@ def avarage_square_results(results):
 
 
 def avarage_evo_results(results):
+    if not results:
+        print(results)  # TODO del
+        print('No results')  # TODO del
+        return None
     result = {}
     df = pd.DataFrame(results)
     if df.count()['x_hat'] > len(df) // 2:

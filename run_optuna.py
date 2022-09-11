@@ -16,18 +16,18 @@ def objective(trial):
     pop_size = trial.suggest_int('pop_size', 1, 80)
     gen = trial.suggest_int('gen', 1, 80)
     try:
-        result = attack(n_images=40,
-                             repeats=50,
-                             dataset='imagenet',
-                             model='inception_v3',
-                             norm='l2',
-                             tournament=25,
-                             eps=5,
-                             pop_size=pop_size,
-                             n_gen=gen,
-                             imagenet_path='/cs_storage/public_datasets/ImageNet',
-                             n_iter=pop_size * gen,
-                             use_slurm=True)
+        result = attack(n_images=1,  # TODO 40,
+                        repeats=1,  # TODO 50,
+                        dataset='imagenet',
+                        model='inception_v3',
+                        norm='l2',
+                        tournament=25,
+                        eps=5,
+                        pop_size=pop_size,
+                        n_gen=gen,
+                        imagenet_path='/cs_storage/public_datasets/ImageNet',
+                        n_iter=pop_size * gen,
+                        use_slurm=True)
     except RuntimeError as e:
         print("Optuna trial failed with:")
         print(e)
@@ -41,7 +41,7 @@ def run_experiment():
     study = optuna.create_study(study_name=study_name, storage=storage_name, load_if_exists=True,
                                 directions=["minimize", "maximize"])
 
-    study.optimize(objective, n_trials=100)
+    study.optimize(objective, n_trials=1)  # TODO 100
 
     print('Best trials:')
     for trial in study.best_trials:
