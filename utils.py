@@ -11,6 +11,8 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 import os
 import re
+import tempfile
+import pickle
 
 print("Checking for gpu...")
 
@@ -181,3 +183,18 @@ def re_get(pattern, line, current):
         return int(float(r.group(1)))
     else:
         return current
+
+
+def save_obj(obj):
+    fd, file_name = tempfile.mkstemp(prefix='attackar_', suffix='.pickle.tmp', dir='.')
+    os.close(fd)
+    with open(file_name, 'wb') as f:
+        pickle.dump(obj, f, protocol=pickle.HIGHEST_PROTOCOL)
+    return file_name
+
+
+def load_obj(file_name):
+    with open(file_name, 'rb') as f:
+        result = pickle.load(f)
+    os.remove(file_name)
+    return result

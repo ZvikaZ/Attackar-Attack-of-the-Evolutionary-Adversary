@@ -6,10 +6,11 @@ import random
 import warnings
 
 import pslurm
-from func_slurm import FuncSlurm
+from func_slurm import FuncSlurm, disable_slurm
 
 from evo_attack import EvoAttack
 from utils import get_model, correctly_classified, print_initialize, print_success, compute_accuracy, get_median_index
+from utils import save_obj, load_obj
 from data.datasets_loader import load_dataset
 from attacks.square_attack import square_attack
 
@@ -19,14 +20,17 @@ models_names = ['custom', 'inception_v3', 'resnet50', 'vgg16_bn', 'vit_l_16']
 datasets_names = ['mnist', 'imagenet', 'cifar10']
 
 
-def generate_evo_attack(dataset, model, x, y, eps, n_gen, pop_size, tournament, norm, i):
+def generate_evo_attack(dataset, model, path_to_x, path_to_y, eps, n_gen, pop_size, tournament, norm, i):
     # needed for FuncSlurm
+    x = load_obj(path_to_x)
+    y = load_obj(path_to_y)
     return EvoAttack(dataset=dataset, model=model, x=x, y=y, n_gen=n_gen, pop_size=pop_size, eps=eps,
                      tournament=tournament, norm=norm, i=i).generate()
 
 
-# TODO use_slurm
 def attack(n_images, dataset, model, norm, tournament, eps, pop_size, n_gen, imagenet_path, n_iter, repeats, use_slurm):
+    if not use_slurm:
+        disable_slurm()
     (x_test, y_test), min_pixel_value, max_pixel_value = load_dataset(dataset, imagenet_path)
     init_model = get_model(model, dataset, MODEL_PATH)
     # compute_accuracy(dataset, init_model, x_test, y_test, min_pixel_value, max_pixel_value, to_normalize=True)
@@ -36,8 +40,10 @@ def attack(n_images, dataset, model, norm, tournament, eps, pop_size, n_gen, ima
     jobs = []
     # TODO take more images if not all are used (not correctly_classified(..))
     for i, (x, y) in enumerate(zip(x_test[:n_images], y_test[:n_images])):
+        path_to_x = save_obj(x)
+        path_to_y = save_obj(y)
         jobs.append(FuncSlurm(evo_single_image, dataset, eps, i, init_model, n_gen, n_images, norm, pop_size, repeats,
-                              tournament, x, y))
+                              tournament, path_to_x, path_to_y))
     for job in jobs:
         result = job.get_result()
         if result:
@@ -119,7 +125,11 @@ def attack(n_images, dataset, model, norm, tournament, eps, pop_size, n_gen, ima
     }
 
 
-def evo_single_image(dataset, eps, i, init_model, n_gen, n_images, norm, pop_size, repeats, tournament, x, y):
+def evo_single_image(dataset, eps, i, init_model, n_gen, n_images, norm, pop_size, repeats, tournament,
+                     path_to_x, path_to_y):
+    print('evo_single_image')
+    x = load_obj(path_to_x)
+    y = load_obj(path_to_y)
     x = x.unsqueeze(dim=0).to(device)
     y = y.to(device)
     if correctly_classified(dataset, init_model, x, y):
@@ -127,8 +137,9 @@ def evo_single_image(dataset, eps, i, init_model, n_gen, n_images, norm, pop_siz
         jobs = []
         for i in range(repeats):
             jobs.append(
-                FuncSlurm(generate_evo_attack, dataset=dataset, model=init_model, x=x, y=y, eps=eps, n_gen=n_gen,
-                          pop_size=pop_size, tournament=tournament, norm=norm, i=i))
+                FuncSlurm(generate_evo_attack, dataset=dataset, model=init_model,
+                          path_to_x=save_obj(x), path_to_y=save_obj(y), eps=eps,
+                          n_gen=n_gen, pop_size=pop_size, tournament=tournament, norm=norm, i=i))
         results = []
         for job in jobs:
             try:
